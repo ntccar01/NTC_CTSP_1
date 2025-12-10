@@ -1,0 +1,921 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>電路查修觀念模擬器</title>
+    
+    <!-- 引入 Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    
+    <!-- 引入 React 和 ReactDOM -->
+    <script crossorigin src="https://unpkg.com/react@18/umd/react.development.js"></script>
+    <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+    
+    <!-- 引入 Babel 用於解析 JSX -->
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+
+    <style>
+        body { margin: 0; padding: 0; background-color: #f8fafc; }
+        .select-none { user-select: none; -webkit-user-select: none; }
+    </style>
+</head>
+<body>
+    <div id="root"></div>
+
+    <script type="text/babel">
+        const { useState, useEffect, useRef, useMemo } = React;
+
+        // --- 內建 Icon 元件 ---
+        const Zap = ({ size = 24, className = "", fill = "none" }) => (
+            <svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill={fill} stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"></polygon></svg>
+        );
+        const RefreshCw = ({ size = 24, className = "" }) => (
+            <svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"></path><path d="M21 3v5h-5"></path><path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"></path><path d="M8 16H3v5"></path></svg>
+        );
+        const AlertCircle = ({ size = 24, className = "" }) => (
+            <svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="8" x2="12" y2="12"></line><line x1="12" y1="16" x2="12.01" y2="16"></line></svg>
+        );
+        const Gauge = ({ size = 24, className = "" }) => (
+            <svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><path d="m12 14 4-4"></path><path d="M3.34 19a10 10 0 1 1 17.32 0"></path></svg>
+        );
+        const PenTool = ({ size = 24, className = "" }) => (
+            <svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><path d="m12 19 7-7 3 3-7 7-3-3z"></path><path d="m18 13-1.5-7.5L2 2l3.5 14.5L13 18l5-5z"></path><path d="m2 2 7.586 7.586"></path><circle cx="11" cy="11" r="2"></circle></svg>
+        );
+        const LinkIcon = ({ size = 24, className = "" }) => (
+            <svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"></path><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"></path></svg>
+        );
+        const UnlinkLeftIcon = ({ size = 24, className = "" }) => (
+            <svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"></path><line x1="4" y1="12" x2="8" y2="12" strokeDasharray="2 2"></line></svg> 
+        );
+        const UnlinkRightIcon = ({ size = 24, className = "" }) => (
+            <svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"></path><line x1="16" y1="12" x2="20" y2="12" strokeDasharray="2 2"></line></svg>
+        );
+        const SettingsIcon = ({ size = 24, className = "" }) => (
+            <svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.09a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"></path><circle cx="12" cy="12" r="3"></circle></svg>
+        );
+        const GroundIcon = ({ size = 24, className = "" }) => (
+            <svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><path d="M12 2v10"></path><path d="M4 12h16"></path><path d="M7 16h10"></path><path d="M10 20h4"></path></svg>
+        );
+        const GroundOffIcon = ({ size = 24, className = "" }) => (
+            <svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><path d="M12 2v6"></path><path d="M4 12h16"></path><path d="M7 16h10"></path><path d="M10 20h4"></path><line x1="2" y1="2" x2="22" y2="22" stroke="red" strokeWidth="2" opacity="0.7"></line></svg>
+        );
+        const ScissorsIcon = ({ size = 24, className = "" }) => (
+            <svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><circle cx="6" cy="6" r="3"></circle><circle cx="6" cy="18" r="3"></circle><line x1="20" y1="4" x2="8.12" y2="15.88"></line><line x1="14.47" y1="14.48" x2="20" y2="20"></line><line x1="8.12" y1="8.12" x2="12" y2="12"></line></svg>
+        );
+
+        // --- 主程式 CircuitSimulator ---
+        const CircuitSimulator = () => {
+            // Circuit State
+            const [isSwitchClosed, setIsSwitchClosed] = useState(false);
+            const [isFuseBlown, setIsFuseBlown] = useState(false);
+            const [connAState, setConnAState] = useState('connected');
+            const [connBState, setConnBState] = useState('connected');
+            const [isRightGroundOk, setIsRightGroundOk] = useState(true);
+            
+            // New: Wire Breaks (True = Broken)
+            const [isWire1Broken, setIsWire1Broken] = useState(false);
+            const [isWire2Broken, setIsWire2Broken] = useState(false);
+            const [isWire3Broken, setIsWire3Broken] = useState(false);
+            const [isWire4Broken, setIsWire4Broken] = useState(false);
+            const [isWire5Broken, setIsWire5Broken] = useState(false);
+
+            // Tool State
+            const [selectedTool, setSelectedTool] = useState('testLight');
+
+            // Probe Positions
+            const [posProbePos, setPosProbePos] = useState({ x: 450, y: 120 }); 
+            const [negProbePos, setNegProbePos] = useState({ x: 350, y: 120 }); 
+            
+            // Probe Angles
+            const [posProbeAngle, setPosProbeAngle] = useState(0);
+            const [negProbeAngle, setNegProbeAngle] = useState(0);
+
+            // Dragging Logic
+            const [isDragging, setIsDragging] = useState(false);
+            const [draggingItem, setDraggingItem] = useState(null); 
+            const [dragOffset, setDragOffset] = useState({ x: 0, y: 0 });
+            const dragHasMoved = useRef(false); 
+
+            const svgRef = useRef(null);
+
+            // Constants
+            const METER_POS = { x: 430, y: 50 }; 
+            const METER_SIZE = { w: 120, h: 160 };
+            const VIEWBOX_WIDTH = 1100; 
+            const VIEWBOX_HEIGHT = 420; 
+
+            // --- Helper: Cycle Connector State ---
+            const cycleConnState = (currentState, setState) => {
+                if (currentState === 'connected') setState('disconnect_left');
+                else if (currentState === 'disconnect_left') setState('disconnect_right');
+                else setState('connected');
+            };
+
+            const getConnLabel = (state, name) => {
+                switch(state) {
+                    case 'connected': return `${name}:連接`;
+                    case 'disconnect_left': return `${name}:左斷`;
+                    case 'disconnect_right': return `${name}:右斷`;
+                    default: return name;
+                }
+            };
+
+            // --- Tool Switching Logic ---
+            useEffect(() => {
+                if (selectedTool === 'testLight') {
+                    setPosProbePos({ x: 450, y: 120 }); 
+                    setNegProbePos({ x: 350, y: 120 }); 
+                    setPosProbeAngle(0); 
+                    setNegProbeAngle(0); 
+                } else {
+                    setPosProbePos({ x: 600, y: 120 }); 
+                    setNegProbePos({ x: 380, y: 120 }); 
+                    setPosProbeAngle(45);  
+                    setNegProbeAngle(-45); 
+                }
+            }, [selectedTool]);
+
+            // --- Circuit Logic Calculation ---
+            // Wrapped in useMemo to avoid unnecessary recalculations
+            const circuitState = React.useMemo(() => {
+                const voltageSource = 12;
+                const voltageAtFuseOut = !isFuseBlown ? voltageSource : null;
+                const voltageAtSwitchOut = isSwitchClosed ? voltageAtFuseOut : null;
+                
+                let voltageAtConnAIn;
+                if (connAState === 'disconnect_left') {
+                    voltageAtConnAIn = null; 
+                } else {
+                    voltageAtConnAIn = voltageAtSwitchOut;
+                }
+
+                const voltageAtConnABlock = voltageAtConnAIn; 
+
+                let voltageAtBulbIn;
+                if (connAState === 'disconnect_right') {
+                    voltageAtBulbIn = null; 
+                } else {
+                    voltageAtBulbIn = voltageAtConnABlock;
+                }
+
+                const groundSource = 0;
+
+                let groundAtConnBOut;
+                if (connBState === 'disconnect_right') {
+                    groundAtConnBOut = null; 
+                } else {
+                    groundAtConnBOut = isRightGroundOk ? groundSource : null;
+                }
+
+                const groundAtConnBBlock = groundAtConnBOut;
+
+                let groundAtBulbOut;
+                if (connBState === 'disconnect_left') {
+                    groundAtBulbOut = null;
+                } else {
+                    groundAtBulbOut = groundAtConnBBlock;
+                }
+
+                const isBulbOn = (voltageAtBulbIn === 12) && (groundAtBulbOut === 0);
+
+                let finalBulbInVal = 0;
+                let finalBulbOutVal = 0;
+
+                if (isBulbOn) {
+                    finalBulbInVal = 12;
+                    finalBulbOutVal = 0;
+                } else {
+                    if (voltageAtBulbIn === 12 && groundAtBulbOut === null) {
+                        finalBulbInVal = 12;
+                        finalBulbOutVal = 12;
+                    } else if (voltageAtBulbIn === null && groundAtBulbOut === 0) {
+                        finalBulbInVal = 0;
+                        finalBulbOutVal = 0;
+                    } else {
+                        finalBulbInVal = 0;
+                        finalBulbOutVal = 0;
+                    }
+                }
+
+                let finalConnABlock = 0;
+                if (connAState === 'disconnect_left') {
+                    finalConnABlock = finalBulbInVal; 
+                } else if (connAState === 'disconnect_right') {
+                    finalConnABlock = (voltageAtSwitchOut === 12) ? 12 : 0;
+                } else {
+                    finalConnABlock = finalBulbInVal; 
+                }
+
+                let finalConnBBlock = 0;
+                if (connBState === 'disconnect_left') {
+                    finalConnBBlock = (groundAtConnBOut === 0) ? 0 : 0; 
+                    if (connBState === 'disconnect_right') finalConnBBlock = 0; 
+                } else if (connBState === 'disconnect_right') {
+                    finalConnBBlock = finalBulbOutVal; 
+                } else {
+                    finalConnBBlock = finalBulbOutVal;
+                }
+
+                let finalSwitchOut = (voltageAtSwitchOut === 12) ? 12 : 0;
+                
+                let finalWireVoltage = 0;
+                if (connBState === 'disconnect_right') {
+                    finalWireVoltage = isRightGroundOk ? 0 : 0; 
+                } else {
+                    finalWireVoltage = finalConnBBlock; 
+                }
+
+                const resolveVoltage = (nodeVal) => (nodeVal === 12 ? 12 : 0);
+
+                const vFuseIn = !isWire1Broken ? 12 : 0;
+                const vFuseOut = (vFuseIn === 12 && !isFuseBlown) ? 12 : 0;
+                const vSwitchIn = (vFuseOut === 12 && !isWire2Broken) ? 12 : 0;
+                const vSwitchOut = (vSwitchIn === 12 && isSwitchClosed) ? 12 : 0;
+                const vConnAIn = (vSwitchOut === 12 && !isWire3Broken) ? 12 : 0;
+
+                let vConnABlockDisp = 0;
+                if (connAState === 'disconnect_left') {
+                    vConnABlockDisp = finalBulbInVal;
+                } else {
+                    vConnABlockDisp = vConnAIn;
+                }
+
+                let vConnAOut = vConnABlockDisp;
+                if (connAState === 'disconnect_right') {
+                    vConnAOut = vConnABlockDisp; 
+                } else {
+                    vConnAOut = vConnABlockDisp; 
+                }
+
+                const vConnBIn = (!isWire5Broken) ? finalBulbOutVal : 0;
+
+                return {
+                    isBulbOn,
+                    voltages: {
+                        batt_pos: 12,
+                        fuse_in: vFuseIn,
+                        fuse_out: vFuseOut,
+                        switch_in: vSwitchIn,
+                        switch_out: vSwitchOut,
+                        conn_a_in: vConnAIn,
+                        conn_a_out: vConnAOut, 
+                        bulb_in: finalBulbInVal,
+                        bulb_out: finalBulbOutVal,
+                        conn_b_in: vConnBIn,
+                        conn_b_out: finalConnBBlock,
+                        wire_ground_end: finalWireVoltage,
+                        chassis: 0
+                    }
+                };
+            }, [isSwitchClosed, isFuseBlown, connAState, connBState, isRightGroundOk, isWire1Broken, isWire2Broken, isWire3Broken, isWire4Broken, isWire5Broken]);
+
+            const V = circuitState.voltages;
+
+            // Updated Hotspots
+            const hotspots = [
+                { id: 'chassis_ground', x: 150, y: 330, voltage: 0, label: "車身搭鐵點" },
+                { id: 'batt_neg', x: 200, y: 300, voltage: 0, label: "電瓶負極" },
+                { id: 'batt_pos', x: 240, y: 300, voltage: 12, label: "電瓶正極" },
+                
+                { id: 'fuse_in', x: 300, y: 300, voltage: V.fuse_in, label: "保險絲輸入" },
+                { id: 'fuse_out', x: 380, y: 300, voltage: V.fuse_out, label: "保險絲輸出" },
+                
+                { id: 'switch_in', x: 480, y: 300, voltage: V.switch_in, label: "開關輸入" },
+                { id: 'switch_out', x: 560, y: 300, voltage: V.switch_out, label: "開關輸出" },
+                
+                { id: 'conn_a_in', x: 630, y: 300, voltage: V.conn_a_in, label: "接頭A(入)" },
+                { id: 'conn_a_out', x: 670, y: 300, voltage: V.conn_a_out, label: "接頭A(出)" },
+                
+                { id: 'bulb_left', x: 730, y: 300, voltage: V.bulb_in, label: "燈泡正極" },
+                { id: 'bulb_right', x: 770, y: 300, voltage: V.bulb_out, label: "燈泡負極" },
+                
+                { id: 'conn_b_in', x: 830, y: 300, voltage: V.conn_b_in, label: "接頭B(入)" },
+                { id: 'conn_b_out', x: 870, y: 300, voltage: V.conn_b_out, label: "接頭B(出)" },
+
+                { id: 'wire_ground_end', x: 930, y: 330, voltage: V.wire_ground_end, label: "右側搭鐵線端" },
+            ];
+
+            // --- Measurement Logic (Derived State) ---
+            const threshold = 30;
+            const posTipOffset = 100;
+            const negTipOffset = selectedTool === 'testLight' ? 30 : 100;
+
+            const getSpotForProbe = (pos, tipOffsetY) => {
+                const tipX = pos.x;
+                const tipY = pos.y + tipOffsetY;
+                return hotspots.find(s => {
+                    const dist = Math.sqrt(Math.pow(s.x - tipX, 2) + Math.pow(s.y - tipY, 2));
+                    return dist < threshold;
+                });
+            };
+
+            const posSpot = getSpotForProbe(posProbePos, posTipOffset);
+            const negSpot = getSpotForProbe(negProbePos, negTipOffset);
+
+            const connectedHotspots = {
+                pos: posSpot ? posSpot.id : null,
+                neg: negSpot ? negSpot.id : null
+            };
+
+            const vPos = posSpot ? posSpot.voltage : null;
+            const vNeg = negSpot ? negSpot.voltage : null;
+
+            let isProbeLightOn = false;
+            let multimeterVoltage = 0;
+
+            if (selectedTool === 'testLight') {
+                if (vPos !== null && vNeg !== null) {
+                    isProbeLightOn = Math.abs(vPos - vNeg) > 10;
+                }
+            } else {
+                if (vPos !== null && vNeg !== null) {
+                    multimeterVoltage = vPos - vNeg;
+                }
+            }
+
+            // --- Drag & Click Logic ---
+            const startDrag = (e, item) => {
+                e.stopPropagation(); 
+                setDraggingItem(item);
+                setIsDragging(true); 
+                dragHasMoved.current = false; 
+                
+                const svgRect = svgRef.current.getBoundingClientRect();
+                const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+                const clientY = e.touches ? e.touches[0].clientY : e.clientY;
+                
+                const scaleX = VIEWBOX_WIDTH / svgRect.width;
+                const scaleY = VIEWBOX_HEIGHT / svgRect.height;
+
+                const currentPos = item === 'pos' ? posProbePos : negProbePos;
+                
+                setDragOffset({
+                    x: (clientX - svgRect.left) * scaleX - currentPos.x,
+                    y: (clientY - svgRect.top) * scaleY - currentPos.y
+                });
+            };
+
+            const handleMouseMove = (e) => {
+                if (!isDragging || !draggingItem) return;
+                dragHasMoved.current = true; 
+                const svgRect = svgRef.current.getBoundingClientRect();
+                const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+                const clientY = e.touches ? e.touches[0].clientY : e.clientY;
+                
+                const scaleX = VIEWBOX_WIDTH / svgRect.width;
+                const scaleY = VIEWBOX_HEIGHT / svgRect.height;
+
+                let x = (clientX - svgRect.left) * scaleX - dragOffset.x;
+                let y = (clientY - svgRect.top) * scaleY - dragOffset.y;
+
+                x = Math.max(0, Math.min(x, VIEWBOX_WIDTH));
+                y = Math.max(0, Math.min(y, VIEWBOX_HEIGHT));
+                if (draggingItem === 'pos') {
+                    setPosProbePos({ x, y });
+                } else {
+                    setNegProbePos({ x, y });
+                }
+            };
+
+            const handleMouseUp = () => {
+                if (isDragging && !dragHasMoved.current && draggingItem) {
+                    if (draggingItem === 'pos') {
+                        if (selectedTool === 'multimeter') {
+                            setPosProbeAngle(prev => prev + 45);
+                        }
+                    } else if (draggingItem === 'neg') {
+                        setNegProbeAngle(prev => prev - 45);
+                    }
+                }
+                setIsDragging(false);
+                setDraggingItem(null);
+            };
+
+            const getWireStart = (angle) => {
+                const rad = (angle * Math.PI) / 180;
+                const x = 0 - (-100) * Math.sin(rad);
+                const y = 100 + (-100) * Math.cos(rad);
+                return { x, y };
+            };
+
+
+            return (
+                <div className="flex flex-col items-center min-h-screen bg-slate-50 font-sans select-none"
+                    onMouseMove={handleMouseMove}
+                    onTouchMove={handleMouseMove}
+                    onMouseUp={handleMouseUp}
+                    onTouchEnd={handleMouseUp}
+                >
+                {/* Header (Updated Layout) */}
+                <div className="w-full max-w-6xl bg-white p-4 shadow-sm mb-2 mt-2 rounded-xl border border-slate-200">
+                    <h1 className="text-xl font-bold text-slate-800 mb-2 flex items-center gap-2">
+                    <Zap size={24} className="text-yellow-500" fill="currentColor" />
+                    電路查修觀念模擬器
+                    </h1>
+                    
+                    <div className="flex gap-4 my-2">
+                        <button 
+                            onClick={() => setSelectedTool('testLight')}
+                            className={`flex-1 p-2 rounded-lg border-2 flex items-center justify-center gap-2 transition-all ${selectedTool === 'testLight' ? 'border-yellow-500 bg-yellow-50 text-yellow-700' : 'border-slate-200 hover:border-slate-300'}`}
+                        >
+                            <PenTool size={20} />
+                            <span className="font-bold text-sm">驗電筆</span>
+                        </button>
+                        <button 
+                            onClick={() => setSelectedTool('multimeter')}
+                            className={`flex-1 p-2 rounded-lg border-2 flex items-center justify-center gap-2 transition-all ${selectedTool === 'multimeter' ? 'border-blue-500 bg-blue-50 text-blue-700' : 'border-slate-200 hover:border-slate-300'}`}
+                        >
+                            <Gauge size={20} />
+                            <span className="font-bold text-sm">三用電錶</span>
+                        </button>
+                    </div>
+
+                    {/* Split Layout: Guide */}
+                    <div className="flex flex-wrap gap-4 text-xs bg-slate-100 p-2 rounded-lg text-slate-700">
+                        <div className="flex items-center gap-2 mb-1 w-full md:w-auto">
+                            <AlertCircle size={14} />
+                            <strong>操作指南：</strong>
+                        </div>
+                        <div className="text-slate-600 pl-2 leading-relaxed w-full">
+                                1. 拖曳探棒進行測量。<br/>
+                                2. <strong>點擊{selectedTool === 'testLight' ? '搭鐵夾' : '探棒'}</strong> (不拖曳) 可旋轉 45 度調整角度。<br/>
+                                3. 使用下方【元件狀態設置】模擬各段斷路或接觸不良。
+                        </div>
+                    </div>
+                </div>
+
+                <div className="relative w-full max-w-6xl bg-white shadow-lg rounded-xl overflow-hidden border border-slate-300" style={{ touchAction: 'none' }}>
+                    
+                    {/* Main SVG Area */}
+                    <svg 
+                    ref={svgRef}
+                    viewBox={`0 0 ${VIEWBOX_WIDTH} ${VIEWBOX_HEIGHT}`} 
+                    className="w-full h-full bg-slate-50 cursor-crosshair"
+                    style={{minHeight: '350px'}} 
+                    >
+                    {/* --- Wires & Components (Static with Gaps) All X+100 --- */}
+                    <g stroke="#334155" strokeWidth="4" fill="none">
+                        {/* Battery Negative & Ground (Shifted 100) */}
+                        <path d="M 150 350 L 150 300 L 200 300" />
+                        <path d="M 130 350 L 170 350" strokeWidth="2"/>
+                        <path d="M 140 355 L 160 355" strokeWidth="2"/>
+                        <path d="M 145 360 L 155 360" strokeWidth="2"/>
+                        
+                        {/* Wire 1: Batt to Fuse (240-300) */}
+                        {isWire1Broken ? (
+                            <>
+                                <line x1="240" y1="300" x2="265" y2="300" />
+                                <line x1="275" y1="300" x2="300" y2="300" />
+                            </>
+                        ) : (
+                            <line x1="240" y1="300" x2="300" y2="300" />
+                        )}
+
+                        {/* Wire 2: Fuse to Switch (380-480) */}
+                        {isWire2Broken ? (
+                            <>
+                                <line x1="380" y1="300" x2="425" y2="300" />
+                                <line x1="435" y1="300" x2="480" y2="300" />
+                            </>
+                        ) : (
+                            <line x1="380" y1="300" x2="480" y2="300" />
+                        )}
+                        
+                        {/* Switch to Conn A (Left Gap) (460->560, 520->620, 530->630) */}
+                        {(() => {
+                            let endX = connAState === 'disconnect_left' ? 620 : 630;
+                            if (isWire3Broken) {
+                                return (
+                                    <>
+                                        <line x1="560" y1="300" x2="590" y2="300" />
+                                        <line x1="600" y1="300" x2={endX} y2="300" />
+                                    </>
+                                );
+                            }
+                            return <line x1="560" y1="300" x2={endX} y2="300" />;
+                        })()}
+
+                        {/* Conn A to Bulb (Right Gap) (570->670, 580->680, 595->695, 605->705, 630->730) */}
+                        {(() => {
+                            let startX = connAState === 'disconnect_right' ? 680 : 670;
+                            if (isWire4Broken) {
+                                return (
+                                    <>
+                                        <line x1={startX} y1="300" x2="695" y2="300" />
+                                        <line x1="705" y1="300" x2="730" y2="300" />
+                                    </>
+                                );
+                            }
+                            return <line x1={startX} y1="300" x2="730" y2="300" />;
+                        })()}
+
+                        {/* Bulb to Conn B (Left Gap) (670->770, 695->795, 705->805, 720->820, 730->830) */}
+                        {(() => {
+                            let endX = connBState === 'disconnect_left' ? 820 : 830;
+                            if (isWire5Broken) {
+                                return (
+                                    <>
+                                        <line x1="770" y1="300" x2="795" y2="300" />
+                                        <line x1="805" y1="300" x2={endX} y2="300" />
+                                    </>
+                                );
+                            }
+                            return <line x1="770" y1="300" x2={endX} y2="300" />;
+                        })()}
+
+                        {/* Conn B to Ground (Right Gap) (770->870, 780->880, 830->930) */}
+                        {connBState === 'disconnect_right' ? (
+                            <line x1="880" y1="300" x2="930" y2="300" /> 
+                        ) : (
+                            <line x1="870" y1="300" x2="930" y2="300" />
+                        )}
+
+                        {/* Right Ground Wire Drop Logic (830->930) */}
+                        {isRightGroundOk ? (
+                            <path d="M 930 300 L 930 350" />
+                        ) : (
+                            <>
+                                <line x1="930" y1="300" x2="930" y2="330" />
+                                <line x1="930" y1="345" x2="930" y2="350" />
+                            </>
+                        )}
+
+                        {/* Right Ground Symbol (810->910, etc) */}
+                        <path d="M 910 350 L 950 350" strokeWidth="2"/>
+                        <path d="M 920 355 L 940 355" strokeWidth="2"/>
+                        <path d="M 925 360 L 935 360" strokeWidth="2"/>
+                    </g>
+
+                    {/* Ground Visuals (Left side +100) */}
+                    <g transform="translate(150, 330)">
+                        <circle cx="0" cy="0" r="8" fill="#94a3b8" stroke="#334155" strokeWidth="2" />
+                        <line x1="-4" y1="-4" x2="4" y2="4" stroke="#334155" strokeWidth="2" />
+                        <line x1="-4" y1="4" x2="4" y2="-4" stroke="#334155" strokeWidth="2" />
+                        <text x="-35" y="5" fontSize="12" fill="#64748b" fontWeight="bold">搭鐵</text>
+                    </g>
+
+                    {/* Right Ground Visual Indicator (+100) */}
+                    {!isRightGroundOk && (
+                        <g transform="translate(945, 335)">
+                            <text x="0" y="0" fontSize="12" fill="#ef4444" fontWeight="bold">搭鐵不良</text>
+                        </g>
+                    )}
+
+                    {/* Battery (+100: x=190) */}
+                    <g transform="translate(190, 310)">
+                        <rect x="0" y="0" width="60" height="60" fill="#cbd5e1" stroke="#334155" strokeWidth="2" rx="4" />
+                        <rect x="5" y="-10" width="10" height="10" fill="#334155" /> 
+                        <text x="5" y="40" fontSize="20" fill="#64748b" fontWeight="bold">-</text>
+                        <rect x="45" y="-10" width="10" height="10" fill="#ef4444" />
+                        <text x="45" y="40" fontSize="20" fill="#ef4444" fontWeight="bold">+</text>
+                        <text x="10" y="80" fontSize="16" fill="#334155" fontWeight="bold">電瓶</text>
+                    </g>
+
+                    {/* Fuse (+100: x=300) */}
+                    <g transform="translate(300, 280)">
+                        <rect x="0" y="0" width="80" height="40" fill="none" stroke="#94a3b8" strokeWidth="2" strokeDasharray="4 2" rx="4"/>
+                        {isFuseBlown ? (
+                        <>
+                            <path d="M 0 20 Q 20 5 35 20" stroke="#ef4444" strokeWidth="3" fill="none" />
+                            <path d="M 45 20 Q 60 35 80 20" stroke="#ef4444" strokeWidth="3" fill="none" />
+                            <circle cx="40" cy="20" r="10" fill="#fee2e2" opacity="0.5" />
+                            <text x="15" y="-10" fontSize="16" fill="#ef4444" fontWeight="bold">已燒斷</text>
+                        </>
+                        ) : (
+                        <path d="M 0 20 Q 20 5 40 20 Q 60 35 80 20" stroke="#f59e0b" strokeWidth="3" fill="none" />
+                        )}
+                        <text x="20" y="60" fontSize="16" fill="#334155" fontWeight="bold">保險絲</text>
+                    </g>
+
+                    {/* Switch (+100: x=480) */}
+                    <g transform="translate(480, 280)">
+                        <circle cx="0" cy="20" r="4" fill="#334155" />
+                        <circle cx="80" cy="20" r="4" fill="#334155" />
+                        <line 
+                            x1="0" y1="20" 
+                            x2="75" y2={isSwitchClosed ? 20 : -10} 
+                            stroke="#334155" 
+                            strokeWidth="4" 
+                            strokeLinecap="round"
+                            className="transition-all duration-300"
+                        />
+                        <text x="25" y="60" fontSize="16" fill="#334155" fontWeight="bold">開關</text>
+                    </g>
+
+                    {/* Conn A Visuals (+100: x=630) */}
+                    <g transform="translate(630, 285)">
+                        <rect x="0" y="0" width="40" height="30" fill="#475569" rx="4" stroke="#334155" strokeWidth="2" />
+                        {connAState === 'connected' ? (
+                            <line x1="20" y1="0" x2="20" y2="30" stroke="#334155" strokeWidth="1" />
+                        ) : (
+                            <rect x="18" y="-2" width="4" height="34" fill="#f8fafc" />
+                        )}
+                        <text x="0" y="50" fontSize="14" fill="#64748b">接頭A</text>
+                    </g>
+
+                    {/* Bulb (+100: x=750) */}
+                    <g transform="translate(750, 270)">
+                        <circle cx="0" cy="30" r="25" fill={circuitState.isBulbOn ? "#fef08a" : "#f1f5f9"} stroke="#64748b" strokeWidth="2" />
+                        <path d="M -20 30 Q 0 10 20 30" stroke="#475569" fill="none" />
+                        {circuitState.isBulbOn && (
+                            <circle cx="0" cy="30" r="35" fill="url(#bulbGlow)" opacity="0.6" />
+                        )}
+                        <text x="-15" y="80" fontSize="16" fill="#334155" fontWeight="bold">燈泡</text>
+                    </g>
+                    
+                    {/* Conn B Visuals (+100: x=830) */}
+                    <g transform="translate(830, 285)">
+                        <rect x="0" y="0" width="40" height="30" fill="#475569" rx="4" stroke="#334155" strokeWidth="2" />
+                        {connBState === 'connected' ? (
+                            <line x1="20" y1="0" x2="20" y2="30" stroke="#334155" strokeWidth="1" />
+                        ) : (
+                            <rect x="18" y="-2" width="4" height="34" fill="#f8fafc" />
+                        )}
+                        <text x="0" y="50" fontSize="14" fill="#64748b">接頭B</text>
+                    </g>
+
+                    {hotspots.map((spot) => {
+                        const isConnected = connectedHotspots.pos === spot.id || connectedHotspots.neg === spot.id;
+                        return (
+                            <circle 
+                                key={spot.id} 
+                                cx={spot.x} 
+                                cy={spot.y} 
+                                r="8" 
+                                fill={isConnected ? "#4ade80" : "transparent"} 
+                                stroke={isConnected ? "#22c55e" : "transparent"}
+                                strokeWidth="2"
+                                className="transition-all" 
+                                style={{pointerEvents: 'none'}} 
+                            />
+                        )
+                    })}
+
+                    {/* --- FIXED MULTIMETER BODY --- */}
+                    {selectedTool === 'multimeter' && (
+                        <g transform={`translate(${METER_POS.x}, ${METER_POS.y})`}>
+                            <rect x="0" y="0" width={METER_SIZE.w} height={METER_SIZE.h} fill="#f59e0b" stroke="#b45309" strokeWidth="2" rx="8" shadow="true" />
+                            <rect x="15" y="15" width="90" height="50" fill="#e2e8f0" stroke="#94a3b8" />
+                            <text x="60" y="50" textAnchor="middle" fontSize="24" fontFamily="monospace" fill="#0f172a" fontWeight="bold">
+                                {multimeterVoltage.toFixed(1)}V
+                            </text>
+                            <circle cx="60" cy="100" r="25" fill="#1e293b" />
+                            <line x1="60" y1="100" x2="60" y2="82" stroke="white" strokeWidth="3" strokeLinecap="round"/>
+                            <text x="60" y="145" textAnchor="middle" fontSize="12" fill="#78350f" fontWeight="bold">DCV</text>
+                            <circle cx="30" cy="130" r="6" fill="#333" stroke="#000" />
+                            <text x="30" y="150" textAnchor="middle" fontSize="10" fill="#333" fontWeight="bold">COM</text>
+                            <circle cx="90" cy="130" r="6" fill="#ef4444" stroke="#991b1b" />
+                            <text x="90" y="150" textAnchor="middle" fontSize="10" fill="#991b1b" fontWeight="bold">VΩ</text>
+                        </g>
+                    )}
+
+                    {/* --- NEGATIVE PROBE (Black) --- */}
+                    <g 
+                        transform={`translate(${negProbePos.x}, ${negProbePos.y})`} 
+                        style={{ cursor: draggingItem === 'neg' ? 'grabbing' : 'grab' }}
+                        onMouseDown={(e) => startDrag(e, 'neg')}
+                        onTouchStart={(e) => startDrag(e, 'neg')}
+                    >
+                        {selectedTool === 'testLight' ? (
+                            // Alligator Clip (Ground)
+                            <g>
+                            <path 
+                                d={`M 0 0 C 0 -50, ${posProbePos.x - negProbePos.x} ${posProbePos.y - negProbePos.y - 50}, ${posProbePos.x - negProbePos.x} ${posProbePos.y - negProbePos.y + 5}`} 
+                                stroke="#1e293b" 
+                                strokeWidth="3" 
+                                fill="none" 
+                            />
+                            
+                            <g transform={`rotate(${negProbeAngle}, 0, 15)`}>
+                                <rect x="-10" y="0" width="20" height="30" fill="#1e293b" rx="2" />
+                                <path d="M -10 30 L 0 45 L 10 30" fill="#334155" />
+                                <circle cx="0" cy="15" r="3" fill="#64748b" />
+                                <text x="15" y="20" fontSize="12" fill="#1e293b" fontWeight="bold">夾搭鐵</text>
+                            </g>
+                            </g>
+                        ) : (
+                            // Multimeter Black Probe
+                            <g>
+                            {(() => {
+                                    const wireStart = getWireStart(negProbeAngle);
+                                    const jackGlobalX = METER_POS.x + 30;
+                                    const jackGlobalY = METER_POS.y + 130;
+                                    return (
+                                        <path 
+                                            d={`M ${wireStart.x} ${wireStart.y} C ${wireStart.x} ${wireStart.y - 100}, ${jackGlobalX - negProbePos.x} ${jackGlobalY - negProbePos.y + 50}, ${jackGlobalX - negProbePos.x} ${jackGlobalY - negProbePos.y}`} 
+                                            stroke="#1e293b" 
+                                            strokeWidth="3" 
+                                            fill="none" 
+                                        />
+                                    );
+                            })()}
+
+                            <g transform={`rotate(${negProbeAngle}, 0, 100)`}>
+                                <rect x="-6" y="0" width="12" height="70" fill="#1e293b" rx="2" />
+                                <line x1="0" y1="70" x2="0" y2="100" stroke="#94a3b8" strokeWidth="2" />
+                                <circle cx="0" cy="100" r="2" fill="#94a3b8" />
+                            </g>
+                            </g>
+                        )}
+                    </g>
+
+
+                    {/* --- POSITIVE PROBE (Red) --- */}
+                    <g 
+                        transform={`translate(${posProbePos.x}, ${posProbePos.y})`} 
+                        style={{ cursor: draggingItem === 'pos' ? 'grabbing' : 'grab' }}
+                        onMouseDown={(e) => startDrag(e, 'pos')}
+                        onTouchStart={(e) => startDrag(e, 'pos')}
+                    >
+                        {selectedTool === 'testLight' ? (
+                            // Test Light Body
+                            <g>
+                                <defs>
+                                    <radialGradient id="ledGlow">
+                                        <stop offset="0%" stopColor="#ef4444" />
+                                        <stop offset="100%" stopColor="transparent" />
+                                    </radialGradient>
+                                </defs>
+
+                                <rect x="-10" y="0" width="20" height="70" fill="#ef4444" fillOpacity="0.2" rx="4" stroke="#ef4444" />
+                                <rect x="-10" y="0" width="20" height="70" fill="transparent" rx="4" />
+                                {/* Added: Connection Point for Ground Wire */}
+                                <circle cx="0" cy="5" r="4" fill="#1e293b" /> 
+
+                                <line x1="0" y1="70" x2="0" y2="100" stroke="#94a3b8" strokeWidth="2" />
+                                <circle cx="0" cy="100" r="2" fill="#94a3b8" />
+                                <circle cx="0" cy="35" r="6" fill={isProbeLightOn ? "#ef4444" : "#475569"} stroke="#0f172a" />
+                                {isProbeLightOn && (
+                                    <circle cx="0" cy="35" r="15" fill="url(#ledGlow)" opacity="0.8" />
+                                )}
+                                <rect x="15" y="0" width="80" height="30" fill="white" stroke="#cbd5e1" rx="4" opacity="0.9" />
+                                <text x="20" y="20" fontSize="12" fill="#334155">
+                                    {isProbeLightOn ? "⚡ 亮燈" : "未過電"}
+                                </text>
+                            </g>
+                        ) : (
+                            // Multimeter Red Probe
+                            <g>
+                                {(() => {
+                                    const wireStart = getWireStart(posProbeAngle);
+                                    const jackGlobalX = METER_POS.x + 90;
+                                    const jackGlobalY = METER_POS.y + 130;
+                                    return (
+                                        <path 
+                                            d={`M ${wireStart.x} ${wireStart.y} C ${wireStart.x} ${wireStart.y - 100}, ${jackGlobalX - posProbePos.x} ${jackGlobalY - posProbePos.y + 50}, ${jackGlobalX - posProbePos.x} ${jackGlobalY - posProbePos.y}`} 
+                                            stroke="#ef4444" 
+                                            strokeWidth="3" 
+                                            fill="none" 
+                                        />
+                                    );
+                                })()}
+
+                                <g transform={`rotate(${posProbeAngle}, 0, 100)`}>
+                                    <rect x="-6" y="0" width="12" height="70" fill="#ef4444" rx="2" />
+                                    <line x1="0" y1="70" x2="0" y2="100" stroke="#94a3b8" strokeWidth="2" />
+                                    <circle cx="0" cy="100" r="2" fill="#94a3b8" />
+                                </g>
+                            </g>
+                        )}
+                    </g>
+
+                    {!isDragging && !isSwitchClosed && !isFuseBlown && (
+                        <text x="500" y="30" textAnchor="middle" fill="#94a3b8" fontSize="14">
+                        提示：請記得先將黑色{selectedTool === 'testLight' ? '夾子' : '探棒'}拖曳至「搭鐵」或「負極」
+                        </text>
+                    )}
+
+                    </svg>
+
+                    {/* Footer - Status */}
+                    <div className="bg-slate-100 p-2 border-t border-slate-200 flex justify-between items-center text-xs text-slate-600">
+                        <div className="flex gap-4">
+                            <div className="flex items-center gap-1">
+                            <div className={`w-2 h-2 rounded-full ${!isFuseBlown ? 'bg-green-500' : 'bg-red-500'}`}></div>
+                            <span>保險絲: {!isFuseBlown ? "正常" : "斷路"}</span>
+                            </div>
+                            <div className="flex items-center gap-1">
+                            <div className={`w-2 h-2 rounded-full ${circuitState.isBulbOn ? 'bg-yellow-400' : 'bg-slate-400'}`}></div>
+                            <span>燈泡: {circuitState.isBulbOn ? "亮起" : "熄滅"}</span>
+                            </div>
+                        </div>
+                        <div className="flex items-center gap-2">
+                            <div className="px-2 py-1 bg-slate-200 rounded">
+                                紅棒: {connectedHotspots.pos || '懸空'} 
+                            </div>
+                            <div className="px-2 py-1 bg-slate-200 rounded">
+                                黑棒: {connectedHotspots.neg || '懸空'} 
+                            </div>
+                            <div>
+                                {selectedTool === 'testLight' ? (
+                                    <span className={`font-bold px-2 py-1 rounded ${isProbeLightOn ? "bg-red-100 text-red-600" : "bg-slate-200 text-slate-500"}`}>
+                                        {isProbeLightOn ? "⚡ 燈亮" : "燈滅"}
+                                    </span>
+                                ) : (
+                                    <span className="font-bold text-blue-600 bg-blue-50 px-2 py-1 rounded">
+                                        {multimeterVoltage.toFixed(1)} V
+                                    </span>
+                                )}
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                {/* Component Settings Panel */}
+                <div className="w-full max-w-6xl mt-2 bg-white p-3 shadow-sm rounded-lg border border-slate-200">
+                    <div className="flex flex-col md:flex-row gap-4">
+                        <h3 className="text-md font-bold text-slate-800 flex items-center gap-2 whitespace-nowrap pt-2">
+                            <SettingsIcon size={18} />
+                            元件設置
+                        </h3>
+                        {/* Adjusted Grid for new buttons */}
+                        <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 gap-2 w-full">
+                            {/* Original Components */}
+                            <button 
+                                onClick={() => setIsFuseBlown(!isFuseBlown)}
+                                className={`py-2 px-3 rounded-md text-xs font-bold shadow-sm transition-all flex items-center justify-center gap-2 border ${isFuseBlown ? 'bg-red-50 border-red-200 text-red-600' : 'bg-green-50 border-green-200 text-green-700'}`}
+                            >
+                                {isFuseBlown ? <> <RefreshCw size={14} /> 保險絲:燒斷 </> : "保險絲:正常"}
+                            </button>
+
+                            <button 
+                                onClick={() => setIsSwitchClosed(!isSwitchClosed)}
+                                className={`py-2 px-3 rounded-md text-xs font-bold shadow-sm transition-all flex items-center justify-center gap-2 border ${isSwitchClosed ? 'bg-blue-600 border-blue-700 text-white' : 'bg-slate-100 border-slate-300 text-slate-600'}`}
+                            >
+                                {isSwitchClosed ? "開關:ON" : "開關:OFF"}
+                            </button>
+
+                            <button 
+                                onClick={() => cycleConnState(connAState, setConnAState)}
+                                className={`py-2 px-3 rounded-md text-xs font-bold shadow-sm transition-all flex items-center justify-center gap-2 border ${connAState !== 'connected' ? 'bg-orange-50 border-orange-200 text-orange-600' : 'bg-slate-100 border-slate-300 text-slate-600'}`}
+                            >
+                                {connAState === 'connected' ? <LinkIcon size={14}/> : (connAState === 'disconnect_left' ? <UnlinkLeftIcon size={14}/> : <UnlinkRightIcon size={14}/>)}
+                                {getConnLabel(connAState, "接頭A")}
+                            </button>
+
+                            <button 
+                                onClick={() => cycleConnState(connBState, setConnBState)}
+                                className={`py-2 px-3 rounded-md text-xs font-bold shadow-sm transition-all flex items-center justify-center gap-2 border ${connBState !== 'connected' ? 'bg-orange-50 border-orange-200 text-orange-600' : 'bg-slate-100 border-slate-300 text-slate-600'}`}
+                            >
+                                {connBState === 'connected' ? <LinkIcon size={14}/> : (connBState === 'disconnect_left' ? <UnlinkLeftIcon size={14}/> : <UnlinkRightIcon size={14}/>)}
+                                {getConnLabel(connBState, "接頭B")}
+                            </button>
+
+                            <button 
+                                onClick={() => setIsRightGroundOk(!isRightGroundOk)}
+                                className={`py-2 px-3 rounded-md text-xs font-bold shadow-sm transition-all flex items-center justify-center gap-2 border ${!isRightGroundOk ? 'bg-red-50 border-red-200 text-red-600' : 'bg-slate-100 border-slate-300 text-slate-600'}`}
+                            >
+                                {isRightGroundOk ? <><GroundIcon size={14}/> 右側搭鐵:正常</> : <><GroundOffIcon size={14}/> 右側搭鐵:不良</>}
+                            </button>
+
+                            {/* New Wire Breaks with Descriptions */}
+                            <button 
+                                onClick={() => setIsWire1Broken(!isWire1Broken)}
+                                className={`py-2 px-3 rounded-md text-xs font-bold shadow-sm transition-all flex items-center justify-center gap-2 border ${isWire1Broken ? 'bg-red-50 border-red-200 text-red-600' : 'bg-slate-50 border-slate-200 text-slate-500'}`}
+                            >
+                                {isWire1Broken ? <ScissorsIcon size={14}/> : null} 線1:斷路(電瓶-保險絲)
+                            </button>
+                            <button 
+                                onClick={() => setIsWire2Broken(!isWire2Broken)}
+                                className={`py-2 px-3 rounded-md text-xs font-bold shadow-sm transition-all flex items-center justify-center gap-2 border ${isWire2Broken ? 'bg-red-50 border-red-200 text-red-600' : 'bg-slate-50 border-slate-200 text-slate-500'}`}
+                            >
+                                {isWire2Broken ? <ScissorsIcon size={14}/> : null} 線2:斷路(保險絲-開關)
+                            </button>
+                            <button 
+                                onClick={() => setIsWire3Broken(!isWire3Broken)}
+                                className={`py-2 px-3 rounded-md text-xs font-bold shadow-sm transition-all flex items-center justify-center gap-2 border ${isWire3Broken ? 'bg-red-50 border-red-200 text-red-600' : 'bg-slate-50 border-slate-200 text-slate-500'}`}
+                            >
+                                {isWire3Broken ? <ScissorsIcon size={14}/> : null} 線3:斷路(開關-接頭A)
+                            </button>
+                            <button 
+                                onClick={() => setIsWire4Broken(!isWire4Broken)}
+                                className={`py-2 px-3 rounded-md text-xs font-bold shadow-sm transition-all flex items-center justify-center gap-2 border ${isWire4Broken ? 'bg-red-50 border-red-200 text-red-600' : 'bg-slate-50 border-slate-200 text-slate-500'}`}
+                            >
+                                {isWire4Broken ? <ScissorsIcon size={14}/> : null} 線4:斷路(接頭A-燈泡)
+                            </button>
+                            <button 
+                                onClick={() => setIsWire5Broken(!isWire5Broken)}
+                                className={`py-2 px-3 rounded-md text-xs font-bold shadow-sm transition-all flex items-center justify-center gap-2 border ${isWire5Broken ? 'bg-red-50 border-red-200 text-red-600' : 'bg-slate-50 border-slate-200 text-slate-500'}`}
+                            >
+                                {isWire5Broken ? <ScissorsIcon size={14}/> : null} 線5:斷路(燈泡-接頭B)
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+                {/* Footer Credits */}
+                <div className="w-full max-w-6xl mt-4 mb-4 text-center text-xs text-slate-400">
+                    <div className="font-bold">電路查修觀念模擬器：第1版</div>
+                    <div className="mt-1">設計開發：國立臺東專科學校汽車科 林慶泓 老師 & Gemini</div>
+                </div>
+
+                </div>
+            );
+        };
+
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(<CircuitSimulator />);
+    </script>
+</body>
+</html>
