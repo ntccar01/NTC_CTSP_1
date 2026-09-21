@@ -352,13 +352,11 @@
 
             // --- Measurement Logic (Derived State) ---
             // V2.1:吸附半徑 30->17,重疊區改取最近點,避免接頭左右端互相吃掉
+            // V3.1.1:黑夾感應點跟隨旋轉角度(尖端局部(0,45)繞(0,15)轉);三用電錶筆尖在旋轉中心上故固定
             const threshold = 17;
             const posTipOffset = 100;
-            const negTipOffset = selectedTool === 'testLight' ? 30 : 100;
 
-            const getSpotForProbe = (pos, tipOffsetY) => {
-                const tipX = pos.x;
-                const tipY = pos.y + tipOffsetY;
+            const getSpotForProbeXY = (tipX, tipY) => {
                 let best = null;
                 let bestDist = Infinity;
                 for (const s of hotspots) {
@@ -371,8 +369,12 @@
                 return best;
             };
 
-            const posSpot = getSpotForProbe(posProbePos, posTipOffset);
-            const negSpot = getSpotForProbe(negProbePos, negTipOffset);
+            const posSpot = getSpotForProbeXY(posProbePos.x, posProbePos.y + posTipOffset);
+            const negRad = (negProbeAngle * Math.PI) / 180;
+            const negTip = selectedTool === 'testLight'
+                ? { x: negProbePos.x - 30 * Math.sin(negRad), y: negProbePos.y + 15 + 30 * Math.cos(negRad) }
+                : { x: negProbePos.x, y: negProbePos.y + 100 };
+            const negSpot = getSpotForProbeXY(negTip.x, negTip.y);
 
             const connectedHotspots = {
                 pos: posSpot ? posSpot.id : null,
@@ -1368,7 +1370,7 @@
 
                 {/* Footer Credits */}
                 <div className="w-full max-w-6xl mt-4 mb-4 text-center text-xs text-slate-400">
-                    <div className="font-bold">電路查修觀念模擬器：第3版正式</div>
+                    <div className="font-bold">電路查修觀念模擬器：第3.1版正式</div>
                     <div className="mt-1">設計開發：國立臺東專科學校汽車科 林慶泓 老師 & Gemini</div>
                 </div>
 
