@@ -1007,26 +1007,6 @@
                         )
                     })}
 
-                    {/* 探棒吸中提示 V3.2:引線式標籤浮於線上方空處,不再壓住綠點 */}
-                    {posSpot && (
-                        <g style={{pointerEvents: 'none'}}>
-                            <line x1={posProbePos.x} y1={posProbePos.y + posTipOffset} x2={posProbePos.x + 14} y2={posProbePos.y + posTipOffset - 40} stroke="#0f172a" strokeWidth="1.5" opacity="0.6" />
-                            <g transform={`translate(${posProbePos.x + 14}, ${posProbePos.y + posTipOffset - 62})`}>
-                                <rect x="0" y="0" width="110" height="22" fill="#0f172a" rx="6" opacity="0.9" />
-                                <text x="55" y="15" textAnchor="middle" fontSize="12" fill="#fff" fontWeight="bold">紅:{posSpot.label}</text>
-                            </g>
-                        </g>
-                    )}
-                    {negSpot && (
-                        <g style={{pointerEvents: 'none'}}>
-                            <line x1={negTip.x} y1={negTip.y} x2={negTip.x - 14} y2={negTip.y - 40} stroke="#0f172a" strokeWidth="1.5" opacity="0.6" />
-                            <g transform={`translate(${negTip.x - 124}, ${negTip.y - 62})`}>
-                                <rect x="0" y="0" width="110" height="22" fill="#0f172a" rx="6" opacity="0.9" />
-                                <text x="55" y="15" textAnchor="middle" fontSize="12" fill="#fff" fontWeight="bold">黑:{negSpot.label}</text>
-                            </g>
-                        </g>
-                    )}
-
                     {/* --- FIXED MULTIMETER BODY --- */}
                     {selectedTool === 'multimeter' && (
                         <g transform={`translate(${METER_POS.x}, ${METER_POS.y})`}>
@@ -1154,6 +1134,26 @@
                             </g>
                         )}
                     </g>
+
+                    {/* 探棒吸中提示 V3.3:放所有探棒之後繪製,標籤永遠在最上層不被探棒蓋住 */}
+                    {posSpot && (
+                        <g style={{pointerEvents: 'none'}}>
+                            <line x1={posProbePos.x} y1={posProbePos.y + posTipOffset} x2={posProbePos.x + 14} y2={posProbePos.y + posTipOffset - 40} stroke="#0f172a" strokeWidth="1.5" opacity="0.6" />
+                            <g transform={`translate(${posProbePos.x + 14}, ${posProbePos.y + posTipOffset - 62})`}>
+                                <rect x="0" y="0" width="110" height="22" fill="#0f172a" rx="6" opacity="0.95" />
+                                <text x="55" y="15" textAnchor="middle" fontSize="12" fill="#fff" fontWeight="bold">紅:{posSpot.label}</text>
+                            </g>
+                        </g>
+                    )}
+                    {negSpot && (
+                        <g style={{pointerEvents: 'none'}}>
+                            <line x1={negTip.x} y1={negTip.y} x2={negTip.x - 14} y2={negTip.y - 40} stroke="#0f172a" strokeWidth="1.5" opacity="0.6" />
+                            <g transform={`translate(${negTip.x - 124}, ${negTip.y - 62})`}>
+                                <rect x="0" y="0" width="110" height="22" fill="#0f172a" rx="6" opacity="0.95" />
+                                <text x="55" y="15" textAnchor="middle" fontSize="12" fill="#fff" fontWeight="bold">黑:{negSpot.label}</text>
+                            </g>
+                        </g>
+                    )}
 
                     {!isDragging && !isSwitchClosed && !isFuseBlown && (
                         <text x="500" y="30" textAnchor="middle" fill="#94a3b8" fontSize="14">
@@ -1376,7 +1376,7 @@
 
                 {/* Footer Credits */}
                 <div className="w-full max-w-6xl mt-4 mb-4 text-center text-xs text-slate-400">
-                    <div className="font-bold">電路查修觀念模擬器：第3.2版正式</div>
+                    <div className="font-bold">電路查修觀念模擬器：第3.3版正式</div>
                     <div className="mt-1">設計開發：國立臺東專科學校汽車科 林慶泓 老師 & Gemini</div>
                 </div>
 
