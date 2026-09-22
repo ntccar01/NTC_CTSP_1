@@ -77,7 +77,6 @@
             { key: 'connB_L', label: "接頭B左接口不良" },
             { key: 'connB_R', label: "接頭B右接口不良" },
             { key: 'gnd', label: "右側搭鐵不良" },
-            { key: 'ok', label: "回路正常(無故障)" },
         ];
         const CODE_CHARS = "ABCDEFGHJKMNPQRSTUVWXYZ234567890"; // 32字,無I/L/O避免誤認
         const CODE_MOD = 32;
@@ -146,6 +145,9 @@
             const [finished, setFinished] = useState(false);
             const [finishSnap, setFinishSnap] = useState(null);
             const [copyMsg, setCopyMsg] = useState('');
+
+            // V4:操作記錄(考試過程軌跡,交卷匯出CSV)
+            const [opLog, setOpLog] = useState([]);
 
             // Tool State
             const [selectedTool, setSelectedTool] = useState('testLight');
@@ -376,6 +378,14 @@
                 : { x: negProbePos.x, y: negProbePos.y + 100 };
             const negSpot = getSpotForProbeXY(negTip.x, negTip.y);
 
+            // V4:供事件記錄用的尖端座標(與畫面顯示同一算法)
+            const posTipXY = () => ({ x: posProbePos.x, y: posProbePos.y + posTipOffset });
+            const negTipXY = () => {
+                const r = (negProbeAngle * Math.PI) / 180;
+                if (selectedTool === 'testLight') return { x: negProbePos.x - 30 * Math.sin(r), y: negProbePos.y + 15 + 30 * Math.cos(r) };
+                return { x: negProbePos.x, y: negProbePos.y + 100 };
+            };
+
             const connectedHotspots = {
                 pos: posSpot ? posSpot.id : null,
                 neg: negSpot ? negSpot.id : null
@@ -442,10 +452,20 @@
             };
 
             const handleMouseUp = () => {
-                if (dragHasMoved.current && isLocked && !finished) {
+                // V4.1:旗標先快照再歸零,且必須是探棒拖曳中才記步;否則點開關/按鈕的mouseUp會拿殘留旗標重複記黑棒
+                const moved = dragHasMoved.current;
+                const item = draggingItem;
+                const active = isDragging && item;
+                dragHasMoved.current = false;
+                if (active && moved && isLocked && !finished) {
                     setSteps((s) => s + 1); // 鎖定考試中:每次放置探棒記一步(交卷後不記)
+                    const tip = item === 'pos' ? posTipXY() : negTipXY();
+                    const spot = getSpotForProbeXY(tip.x, tip.y);
+                    const sLabel = spot ? spot.label : '懸空';
+                    const sVolt = spot ? (spot.voltage > 10 ? '12V' : '0V') : '--';
+                    addLog(item === 'pos' ? '放紅棒' : '放黑棒', sLabel + ' ' + sVolt);
                 }
-                if (isDragging && !dragHasMoved.current && draggingItem) {
+                if (active && !moved) {
                     if (draggingItem === 'pos') {
                         if (selectedTool === 'multimeter') {
                             setPosProbeAngle(prev => prev + 45);
@@ -463,6 +483,24 @@
                 const x = 0 - (-100) * Math.sin(rad);
                 const y = 100 + (-100) * Math.cos(rad);
                 return { x, y };
+            };
+
+            // --- V4:操作記錄 ---
+            const addLog = (act, detail, codeOverride) => {
+                const sec = examStart ? Math.max(0, Math.floor((Date.now() - examStart) / 1000)) : 0;
+                const code = codeOverride !== undefined ? codeOverride : (currentCode ? currentCode : "手動");
+                setOpLog((log) => log.length >= 500 ? log : log.concat([{ code: code, sec: sec, time: new Date().toLocaleTimeString(), act: act, detail: detail }]));
+            };
+
+            const toggleSwitch = () => {
+                const nv = !isSwitchClosed;
+                setIsSwitchClosed(nv);
+                if (isLocked && !finished) addLog('切開關', nv ? 'OFF→ON' : 'ON→OFF');
+            };
+
+            const switchTool = (t) => {
+                setSelectedTool(t);
+                if (isLocked && !finished) addLog('切工具', t === 'testLight' ? '驗電筆' : '三用電錶');
             };
 
             // --- V3:考試函式 ---
@@ -498,6 +536,7 @@
                 setFinished(false);
                 setFinishSnap(null);
                 setCopyMsg('');
+                setOpLog([]);
                 setSteps(0);
                 setWrongCount(0);
                 setAnsSel('');
@@ -520,6 +559,7 @@
                 applyFault(fi);
                 resetExamState(fi, code);
                 setHistory((h) => [{ code: code, fi: fi, t: new Date().toLocaleString() }].concat(h).slice(0, 20));
+                addLog('出題鎖定', '題號:' + code, code);
             };
 
             const doReplay = () => {
@@ -536,6 +576,7 @@
                 applyFault(fi);
                 resetExamState(fi, code);
                 setReplayCode('');
+                addLog('題號重現鎖定', '題號:' + code, code);
             };
 
             const doLockManual = () => {
@@ -547,6 +588,8 @@
                 setFinished(false);
                 setFinishSnap(null);
                 setCopyMsg('');
+                setOpLog([]);
+                addLog('手動鎖定', '老師手動命題', '');
                 setCurrentCode('');
                 setSteps(0);
                 setWrongCount(0);
@@ -568,6 +611,19 @@
                     setGradeMsg(null);
                     setFinished(false);
                     setFinishSnap(null);
+                    setOpLog([]);
+                    // V4.2:解鎖後探棒回起始位,下一位學生從乾淨畫面開始
+                    if (selectedTool === 'testLight') {
+                        setPosProbePos({ x: 450, y: 120 });
+                        setNegProbePos({ x: 350, y: 120 });
+                        setPosProbeAngle(0);
+                        setNegProbeAngle(0);
+                    } else {
+                        setPosProbePos({ x: 600, y: 120 });
+                        setNegProbePos({ x: 380, y: 120 });
+                        setPosProbeAngle(45);
+                        setNegProbeAngle(-45);
+                    }
                 } else {
                     setPwdErr('密碼錯誤');
                 }
@@ -602,10 +658,12 @@
                 if (parseInt(ansSel, 10) === currentFault) {
                     const sec = examStart ? Math.floor((Date.now() - examStart) / 1000) : 0;
                     setFinishSnap({ secs: sec, steps: steps, wrong: wrongCount, t: new Date().toLocaleString(), ans: parseInt(ansSel, 10), ev: evPoint, evr: evRead, tool: selectedTool });
+                    addLog('送出診斷', '答案:' + FAULTS[parseInt(ansSel, 10)].label + ' 證據:' + evPoint + ' 正確');
                     setFinished(true);
                     setGradeMsg({ ok: true, text: "診斷正確!" + steps + "步 " + sec + "秒 誤判" + wrongCount + "次 (已凍結,可交作業)" });
                 } else {
                     setWrongCount((c) => c + 1);
+                    addLog('送出診斷', '答案:' + FAULTS[parseInt(ansSel, 10)].label + ' 證據:' + evPoint + ' 誤判');
                     setGradeMsg({ ok: false, text: "位置不對,再量量看(已記錄一次誤判)" });
                 }
             };
@@ -728,6 +786,20 @@
                 }
             };
 
+            const doDownloadCsv = () => {
+                const rows = [['題號', '序號', '秒數', '時間', '動作', '內容']];
+                opLog.forEach((e, i) => rows.push([e.code, i + 1, e.sec, e.time, e.act, e.detail]));
+                const csv = '﻿' + rows.map((r) => r.map((c) => '"' + String(c).replace(/"/g, '""') + '"').join(',')).join('\r\n');
+                const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' });
+                const a = document.createElement('a');
+                a.href = URL.createObjectURL(blob);
+                a.download = "電路查修操作記錄_" + (currentCode ? currentCode : "手動") + ".csv";
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+                setCopyMsg('CSV已下載,可用Excel開啟看查修軌跡');
+            };
+
             const examSecs = examStart ? Math.max(0, Math.floor((nowTs - examStart) / 1000)) : 0;
             const examTimeStr = Math.floor(examSecs / 60) + "分" + (examSecs % 60) + "秒";
 
@@ -748,14 +820,14 @@
                     
                     <div className="flex gap-4 my-2">
                         <button 
-                            onClick={() => setSelectedTool('testLight')}
+                            onClick={() => switchTool('testLight')}
                             className={`flex-1 p-2 rounded-lg border-2 flex items-center justify-center gap-2 transition-all ${selectedTool === 'testLight' ? 'border-yellow-500 bg-yellow-50 text-yellow-700' : 'border-slate-200 hover:border-slate-300'}`}
                         >
                             <PenTool size={20} />
                             <span className="font-bold text-sm">驗電筆</span>
                         </button>
                         <button 
-                            onClick={() => setSelectedTool('multimeter')}
+                            onClick={() => switchTool('multimeter')}
                             className={`flex-1 p-2 rounded-lg border-2 flex items-center justify-center gap-2 transition-all ${selectedTool === 'multimeter' ? 'border-blue-500 bg-blue-50 text-blue-700' : 'border-slate-200 hover:border-slate-300'}`}
                         >
                             <Gauge size={20} />
@@ -941,7 +1013,7 @@
                     </g>
 
                     {/* Switch V3.1:圖上可直接點擊切換,鎖定考試也能操作 */}
-                    <g transform="translate(480, 280)" onClick={() => setIsSwitchClosed((v) => !v)} style={{ cursor: 'pointer' }}>
+                    <g transform="translate(480, 280)" onClick={toggleSwitch} style={{ cursor: 'pointer' }}>
                         <circle cx="0" cy="20" r="4" fill="#334155" />
                         <circle cx="80" cy="20" r="4" fill="#334155" />
                         <line
@@ -1284,6 +1356,7 @@
                             <button onClick={doCopyReport} className="py-1 px-3 rounded-md text-xs font-bold bg-blue-600 text-white shadow-sm">複製成績</button>
                             <button onClick={doDownloadTxt} className="py-1 px-3 rounded-md text-xs font-bold bg-slate-600 text-white shadow-sm">下載TXT</button>
                             <button onClick={doDownloadPng} className="py-1 px-3 rounded-md text-xs font-bold bg-purple-600 text-white shadow-sm">下載圖檔</button>
+                            <button onClick={doDownloadCsv} className="py-1 px-3 rounded-md text-xs font-bold bg-teal-600 text-white shadow-sm">下載操作記錄CSV</button>
                             {copyMsg && (<span className="text-xs text-green-700">{copyMsg}</span>)}
                         </div>
                         <canvas ref={canvasRef} style={{ display: 'none' }} />
@@ -1376,7 +1449,7 @@
 
                 {/* Footer Credits */}
                 <div className="w-full max-w-6xl mt-4 mb-4 text-center text-xs text-slate-400">
-                    <div className="font-bold">電路查修觀念模擬器：第3.4版正式</div>
+                    <div className="font-bold">電路查修觀念模擬器：第4版正式</div>
                     <div className="mt-1">設計開發：國立臺東專科學校汽車科 林慶泓 老師 & Gemini</div>
                 </div>
 
