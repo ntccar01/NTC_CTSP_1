@@ -7,6 +7,11 @@
     
     <!-- 引入 Tailwind CSS -->
     <script src="https://cdn.tailwindcss.com"></script>
+
+    <!-- V5: Firebase compat SDK(匿名登入+考卷上傳;擋住則走本機模式) -->
+    <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
     
     <!-- 引入 React 和 ReactDOM -->
     <script crossorigin src="https://unpkg.com/react@18/umd/react.development.js"></script>
@@ -104,6 +109,30 @@
             return fi;
         };
 
+        // --- V5: Firebase 設定(公開設計,安全靠firestore.rules;本機測試走localhost) ---
+        const FB_CONFIG = {
+            apiKey: "AIzaSyBdhT92cGOygPy7P_799I4NfT2eH4u9vo4",
+            authDomain: "ntc-circuit-exam.firebaseapp.com",
+            projectId: "ntc-circuit-exam",
+            storageBucket: "ntc-circuit-exam.firebasestorage.app",
+            messagingSenderId: "688447905101",
+            appId: "1:688447905101:web:01a0a7ba461fa847616b04"
+        };
+        const FB_PENDING_KEY = 'ctsp_pending';
+        let fbAuth = null;
+        let fbDb = null;
+        const fbReady = () => {
+            if (typeof firebase === 'undefined') return false;
+            try {
+                if (!firebase.apps || firebase.apps.length === 0) firebase.initializeApp(FB_CONFIG);
+                fbAuth = firebase.auth();
+                fbDb = firebase.firestore();
+                return true;
+            } catch (e) {
+                return false;
+            }
+        };
+
         // --- 主程式 CircuitSimulator ---
         const CircuitSimulator = () => {
             // Circuit State
@@ -153,6 +182,10 @@
             const [stuClass, setStuClass] = useState('');
             const [stuSeat, setStuSeat] = useState('');
             const [stuName, setStuName] = useState('');
+
+            // V5:雲端同步狀態 local=未開始 uploading=上傳中 done=已上傳 pending=待上傳 nodb=本機模式
+            const [fbUid, setFbUid] = useState(null);
+            const [syncState, setSyncState] = useState('local');
 
             // Tool State
             const [selectedTool, setSelectedTool] = useState('testLight');
@@ -217,6 +250,20 @@
                 const t = setInterval(() => setNowTs(Date.now()), 1000);
                 return () => clearInterval(t);
             }, [isLocked, finished]);
+
+            // V5:開頁即匿名登入;回線時重試暫存上傳
+            useEffect(() => {
+                if (!fbReady()) return;
+                fbAuth.signInAnonymously()
+                    .then((cred) => {
+                        setFbUid(cred.user.uid);
+                        retryPendingUpload();
+                    })
+                    .catch(() => {});
+                const onOnline = () => retryPendingUpload();
+                window.addEventListener('online', onOnline);
+                return () => window.removeEventListener('online', onOnline);
+            }, [finished]);
 
             // --- Circuit Logic Calculation (V2: clean node model) ---
             // 單一串聯迴路: 電瓶+ -> 線1 -> 保險絲 -> 線2 -> 開關 -> 線3
@@ -542,6 +589,7 @@
                 setFinishSnap(null);
                 setCopyMsg('');
                 setOpLog([]);
+                setSyncState('local');
                 setSteps(0);
                 setStuClass('');
                 setStuSeat('');
@@ -597,6 +645,7 @@
                 setFinishSnap(null);
                 setCopyMsg('');
                 setOpLog([]);
+                setSyncState('local');
                 setStuClass('');
                 setStuSeat('');
                 setStuName('');
@@ -623,6 +672,8 @@
                     setFinished(false);
                     setFinishSnap(null);
                     setOpLog([]);
+                    setSyncState('local');
+                    setStuClass('');
                     setStuClass('');
                     setStuSeat('');
                     setStuName('');
@@ -677,6 +728,12 @@
                     const sec = examStart ? Math.floor((Date.now() - examStart) / 1000) : 0;
                     setFinishSnap({ secs: sec, steps: steps, wrong: wrongCount, t: new Date().toLocaleString(), ans: parseInt(ansSel, 10), ev: evPoint, evr: evRead, tool: selectedTool, cls: stuClass.trim(), seat: stuSeat.trim(), name: stuName.trim() });
                     addLog('送出診斷', '答案:' + FAULTS[parseInt(ansSel, 10)].label + ' 證據:' + evPoint + ' 正確');
+                    // V5:交卷即上傳雲端(考卷+軌跡),離線則暫存待重試
+                    attemptUpload({
+                        examId: (currentCode ? currentCode : 'MAN') + '_' + (examStart ? examStart : Date.now()),
+                        exam: { code: currentCode, faultIdx: currentFault, faultLabel: FAULTS[currentFault].label, ansIdx: parseInt(ansSel, 10), ansLabel: FAULTS[parseInt(ansSel, 10)].label, evPoint: evPoint, evRead: evRead, tool: selectedTool, steps: steps, secs: sec, wrong: wrongCount, cls: stuClass.trim(), seat: stuSeat.trim(), name: stuName.trim(), clientTime: new Date().toISOString() },
+                        events: opLog.map((e) => ({ sec: e.sec, time: e.time, act: e.act, detail: e.detail }))
+                    });
                     setFinished(true);
                     setGradeMsg({ ok: true, text: "診斷正確!" + steps + "步 " + sec + "秒 誤判" + wrongCount + "次 (已凍結,可交作業)" });
                 } else {
@@ -684,6 +741,74 @@
                     addLog('送出診斷', '答案:' + FAULTS[parseInt(ansSel, 10)].label + ' 證據:' + evPoint + ' 誤判');
                     setGradeMsg({ ok: false, text: "位置不對,再量量看(已記錄一次誤判)" });
                 }
+            };
+
+            // --- V5:雲端上傳(考卷+軌跡一批寫入,失敗進暫存列) ---
+            const readPendingQueue = () => {
+                try {
+                    const q = JSON.parse(localStorage.getItem(FB_PENDING_KEY) || '[]');
+                    return Array.isArray(q) ? q : [];
+                } catch (e) {
+                    return [];
+                }
+            };
+
+            const enqueuePayload = (p) => {
+                try {
+                    const q = readPendingQueue();
+                    if (!q.some((x) => x.examId === p.examId)) q.push(p);
+                    localStorage.setItem(FB_PENDING_KEY, JSON.stringify(q.slice(-20)));
+                } catch (e) {}
+            };
+
+            const uploadPayload = (p, uid) => {
+                const batch = fbDb.batch();
+                const examRef = fbDb.collection('exams').doc(p.examId);
+                const ex = Object.assign({ uid: uid, createdAt: firebase.firestore.FieldValue.serverTimestamp() }, p.exam);
+                batch.set(examRef, ex);
+                p.events.slice(-450).forEach((e) => {
+                    batch.set(examRef.collection('events').doc(), { uid: uid, sec: e.sec, time: e.time, act: e.act, detail: e.detail });
+                });
+                return batch.commit();
+            };
+
+            const attemptUpload = (payload) => {
+                const u = (fbAuth && fbAuth.currentUser) ? fbAuth.currentUser.uid : null;
+                if (!u || !fbDb) {
+                    enqueuePayload(payload);
+                    setSyncState(fbDb ? 'pending' : 'nodb');
+                    return;
+                }
+                setSyncState('uploading');
+                uploadPayload(payload, u).then(() => {
+                    setSyncState('done');
+                }).catch(() => {
+                    enqueuePayload(payload);
+                    setSyncState('pending');
+                });
+            };
+
+            const retryPendingUpload = () => {
+                try {
+                    const u = (fbAuth && fbAuth.currentUser) ? fbAuth.currentUser.uid : null;
+                    if (!u || !fbDb) return;
+                    const q = readPendingQueue();
+                    if (q.length === 0) return;
+                    const remaining = [];
+                    let chain = Promise.resolve();
+                    q.forEach((p) => {
+                        chain = chain.then(() => uploadPayload(p, u)).catch(() => {
+                            remaining.push(p);
+                        });
+                    });
+                    chain.then(() => {
+                        try {
+                            localStorage.setItem(FB_PENDING_KEY, JSON.stringify(remaining));
+                        } catch (e) {}
+                        if (remaining.length === 0 && finished) setSyncState('done');
+                        else if (remaining.length > 0) setSyncState('pending');
+                    });
+                } catch (e) {}
             };
 
             // --- V3.3:成績單匯出 ---
@@ -1389,6 +1514,14 @@
                             {copyMsg && (<span className="text-xs text-green-700">{copyMsg}</span>)}
                         </div>
                         <canvas ref={canvasRef} style={{ display: 'none' }} />
+                        {/* V5:雲端同步狀態 */}
+                        <div className="mt-2 flex flex-wrap items-center gap-2 text-xs">
+                            {syncState === 'done' && (<span className="font-bold text-green-700">雲端已上傳 ✓</span>)}
+                            {syncState === 'uploading' && (<span className="text-slate-500">上傳中…</span>)}
+                            {syncState === 'pending' && (<span className="font-bold text-orange-600">待上傳（網路回來自動重試）</span>)}
+                            {syncState === 'pending' && (<button onClick={() => retryPendingUpload()} className="py-1 px-3 rounded-md text-xs font-bold bg-orange-500 text-white shadow-sm">重試上傳</button>)}
+                            {(syncState === 'local' || syncState === 'nodb') && (<span className="text-slate-400">本機模式（未連雲端，成績單照常可交）</span>)}
+                        </div>
                     </div>
                     )}
                 </div>
@@ -1478,7 +1611,7 @@
 
                 {/* Footer Credits */}
                 <div className="w-full max-w-6xl mt-4 mb-4 text-center text-xs text-slate-400">
-                    <div className="font-bold">電路查修觀念模擬器：第4.1版正式</div>
+                    <div className="font-bold">電路查修觀念模擬器：第5版正式</div>
                     <div className="mt-1">設計開發：國立臺東專科學校汽車科 林慶泓 老師 & Gemini</div>
                 </div>
 
